@@ -1,4 +1,8 @@
 import { AgentConfig } from "@/app/types";
+import dominosService, { Store } from "@/app/services/dominosService";
+
+// Cache for store data to avoid repeated API calls
+const storeCache: Record<string, Store> = {};
 
 const storeFinderAgent: AgentConfig = {
   name: "storeFinderAgent",
@@ -42,78 +46,103 @@ const storeFinderAgent: AgentConfig = {
     },
   ],
   toolLogic: {
-    findNearbyStores: ({ address }) => {
+    findNearbyStores: async ({ address }) => {
       console.log("[toolLogic] calling findNearbyStores(), address:", address);
       
-      // Dummy data for nearby stores
-      const stores = [
-        {
-          store_id: "store1",
-          name: "Pizza Paradise",
-          address: "123 Main St, Anytown, USA",
-          distance: "0.5 miles",
-          rating: 4.5,
-          delivery_time: "20-30 min",
-        },
-        {
-          store_id: "store2",
-          name: "Slice Haven",
-          address: "456 Oak Ave, Anytown, USA",
-          distance: "1.2 miles",
-          rating: 4.7,
-          delivery_time: "25-35 min",
-        },
-        {
-          store_id: "store3",
-          name: "Dough Delights",
-          address: "789 Pine Blvd, Anytown, USA",
-          distance: "1.8 miles",
-          rating: 4.3,
-          delivery_time: "30-40 min",
-        },
-      ];
-
-      return {
-        stores: stores,
-      };
+      try {
+        // Use our client-side service to find nearby stores
+        const stores = await dominosService.findNearbyStores(address);
+        
+        // Cache the store data for later use
+        stores.forEach(store => {
+          storeCache[store.store_id] = store;
+        });
+        
+        return {
+          stores,
+        };
+      } catch (error) {
+        console.error("Error finding nearby stores:", error);
+        
+        // Return dummy data if the API call fails
+        const dummyStores = [
+          {
+            store_id: "8278",
+            name: "Domino's Pizza",
+            address: "123 Main St, Anytown, USA",
+            distance: "0.5 miles",
+            phone: "(555) 123-4567",
+            estimated_delivery_time: "30-45 minutes",
+          },
+          {
+            store_id: "8279",
+            name: "Domino's Pizza",
+            address: "456 Oak Ave, Anytown, USA",
+            distance: "1.2 miles",
+            phone: "(555) 234-5678",
+            estimated_delivery_time: "35-50 minutes",
+          },
+        ];
+        
+        // Cache the dummy store data
+        dummyStores.forEach(store => {
+          storeCache[store.store_id] = store;
+        });
+        
+        return {
+          stores: dummyStores,
+          error: "Could not connect to Domino's API. Using dummy data instead."
+        };
+      }
     },
-    selectStore: ({ store_id }) => {
+    
+    selectStore: async ({ store_id }) => {
       console.log("[toolLogic] calling selectStore(), store_id:", store_id);
       
-      // Dummy data for store selection
-      const storeMap: Record<string, {
-        store_id: string;
-        name: string;
-        address: string;
-        phone: string;
-        hours: string;
-      }> = {
-        "store1": {
-          store_id: "store1",
-          name: "Pizza Paradise",
+      try {
+        // Check if we have the store in cache
+        if (storeCache[store_id]) {
+          return {
+            selected_store: storeCache[store_id],
+          };
+        }
+        
+        // If not in cache, fetch from API
+        const store = await dominosService.getStoreDetails(store_id);
+        
+        // Cache the store data
+        storeCache[store_id] = store;
+        
+        return {
+          selected_store: store,
+        };
+      } catch (error) {
+        console.error("Error selecting store:", error);
+        
+        // If we have the store in cache, return that
+        if (storeCache[store_id]) {
+          return {
+            selected_store: storeCache[store_id],
+          };
+        }
+        
+        // Otherwise return a dummy store
+        const dummyStore = {
+          store_id: store_id,
+          name: `Domino's Pizza #${store_id}`,
           address: "123 Main St, Anytown, USA",
           phone: "(555) 123-4567",
           hours: "10:00 AM - 10:00 PM",
-        },
-        "store2": {
-          store_id: "store2",
-          name: "Slice Haven",
-          address: "456 Oak Ave, Anytown, USA",
-          phone: "(555) 234-5678",
-          hours: "11:00 AM - 11:00 PM",
-        },
-        "store3": {
-          store_id: "store3",
-          name: "Dough Delights",
-          address: "789 Pine Blvd, Anytown, USA",
-          phone: "(555) 345-6789",
-          hours: "10:30 AM - 10:30 PM",
-        },
-      };
-
-      return {
-        selected_store: storeMap[store_id] || null,
-      };
+        };
+        
+        // Cache the dummy store
+        storeCache[store_id] = dummyStore;
+        
+        return {
+          selected_store: dummyStore,
+          error: "Could not connect to Domino's API. Using dummy data instead."
+        };
+      }
     },
   },
 };
